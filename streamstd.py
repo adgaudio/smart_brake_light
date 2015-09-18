@@ -6,94 +6,132 @@ import math
 import random
 import numpy as np
 import pandas as pd
+import pylab
+pylab.ion()
 random.seed(0)
 
 
-def update_avg(x, n, prev_mean):
+def update_means(x, ith_iter, ss):
     """
-    online update of the avg given previous avg
+    Return the mean of the window with the most samples.
+    This is the best mean across all windows
+
+    This function modifies state of `ss`
 
     x = current sample value to add to rolling avg
-    n = index into window
-    prev_mean = mean at n-1
+    ss = StreamStats instance
     """
-    ans = (n*prev_mean + x) / (n+1)
-    # print('%s = (%s*%s + %s) / (%s+1)' % (ans, n, prev_mean, x, n))
-    return ans
+    # update windows
+    for i in range(ss.n_windows):
+        ss.means[i] = (ss.n[i] * ss.means[i] + x) / (ss.n[i] + 1)
+
+    # get avg from best window
+    ss.prev_avg = ss.cur_avg
+    if ith_iter < ss.max_samples:
+        ss.cur_avg = ss.means[0]
+    else:
+        ss.cur_avg = \
+            ss.means[
+                ss.n_windows - 1 - (ith_iter % ss.max_samples)
+                // (ss.max_samples // ss.n_windows)]
+        # above craziness gets index of window with most samples
+
+    # update indexing
+    for x in range(ss.n_windows):
+        ss.n[x] = (ss.n[x] + 1) % ss.max_samples
+
+    return ss.cur_avg
+
+
+def update_std_sums(x, ith_iter, ss):
+    """
+    Calculate an intermediary value for standard deviation for each window
+    Return current standard deviation from window with most samples
+
+    x = current sample value to add to rolling avg
+    prev_avg = previous best average across all windows
+    cur_avg = current best average across all windows
+    ss = StreamStats instance
+    """
+    # update windows
+    for i in range(ss.n_windows):
+        ss.std_sums[i] += (x - ss.prev_avg) * (x - ss.cur_avg)
+
+    # get std from best window
+    sum_sq_err = ss.std_sums[
+        (ith_iter % ss.max_samples) // (ss.max_samples // ss.n_windows)]
+    if 1 < ith_iter < ss.max_samples:
+        # extrapolate what the sum_sq_err should be if we haven't
+        # generated max_samples yet
+        sum_sq_err = sum_sq_err * ss.max_samples / ith_iter
+    var = sum_sq_err / (ss.max_samples - 1)
+    std = math.sqrt(var)
+
+    # update indexing
+    if ith_iter % (ss.max_samples // ss.n_windows) == \
+            ss.max_samples // ss.n_windows - 1:
+        ss.std_sums[
+            (ith_iter % ss.max_samples) // (ss.max_samples // ss.n_windows)] = 0
+
+    return std
 
 
 def analogRead():
     return random.random() ** 10
 
 
-max_samples = 100
-n_windows = 10
-# n_windows = int(2*math.log(200))  # guess acceptable window size
+class StreamStats(object):
+    def __init__(self, max_samples, n_windows=None):
+        # validation
+        if max_samples / n_windows != max_samples // n_windows:
+            raise Exception("n_windows should be a factor of max_samples")
 
-# validation
-if max_samples / n_windows != max_samples // n_windows:
-    raise Exception("n_windows should be a factor of max_samples")
+        self.max_samples = max_samples
+        if n_windows is None:
+            # guess acceptable window size
+            self.n_windows = int(2*math.log(200))
+        else:
+            self.n_windows = n_windows
 
-n = [x * max_samples / n_windows for x in range(n_windows)]
-prev_mean = [0] * n_windows
-prev_std_sum = [0] * n_windows
+        # other variables
+        self.n = [x * max_samples / n_windows for x in range(n_windows)]
+        self.means = [0] * n_windows
+        self.std_sums = [0] * n_windows
+
+        self.sum_sq_err = 0
+        self.cur_avg = 0
+        self.prev_avg = 0
 
 
-cur_avg = 0
-sum_sq_err = 0
+def main(max_samples, n_windows):
+    ss = StreamStats(max_samples, n_windows)
 
-xs = []  # debug
-data = []  # debug: testing
+    xs = []  # debug
+    data = []  # debug: testing
 
-for ith_iter in range(1000):
-    x = analogRead()
+    for ith_iter in range(1000):
+        x = analogRead()
 
-    # maintain the estimated rolling average
-    for i in range(n_windows):
-        prev_mean[i] = update_avg(x, n[i], prev_mean[i])
-    # choose the window with most samples as current avg estimate
-    prev_avg = cur_avg
-    if ith_iter < max_samples:
-        cur_avg = prev_mean[0]
-    else:
-        cur_avg = \
-            prev_mean[
-                n_windows - 1 - (ith_iter % max_samples)
-                // (max_samples // n_windows)]
-        # above craziness gets index of window with most samples
-    for i in range(n_windows):
-        prev_std_sum[i] += (x - prev_avg) * (x - cur_avg)
+        # maintain the estimated rolling average
+        cur_avg = update_means(x, ith_iter, ss)
+        std = update_std_sums(x, ith_iter, ss)
 
-    # estimate the var and std
-    sum_sq_err = prev_std_sum[
-        (ith_iter % max_samples) // (max_samples // n_windows)]
-    if 1 < ith_iter < max_samples:
-        # extrapolate what the sum_sq_err should be if we haven't
-        # generated max_samples yet
-        sum_sq_err = sum_sq_err * max_samples / ith_iter
-    var = sum_sq_err / (max_samples - 1)
-    std = math.sqrt(var)
+        # debug: true rolling std
+        xs.append(x)  # debug
+        tavg = np.mean(xs[-max_samples:])
+        tstd = np.std(xs[-max_samples:])
 
-    # debug: true rolling std
-    xs.append(x)  # debug
-    tavg = np.mean(xs[-max_samples:])
-    tvar = np.var(xs[-max_samples:])
-    tstd = np.std(xs[-max_samples:])
+        dct = dict(
+            est_std=std, est_avg=cur_avg,
+            true_std=tstd, true_avg=tavg
+        )
 
-    dct = dict(
-        est_var=var, est_std=std, est_avg=cur_avg,
-        true_var=tvar, true_std=tstd, true_avg=tavg
-    )
+        data.append(dct)
+    df = pd.DataFrame(data)
+    return df
 
-    # indexing for std
-    if ith_iter % (max_samples // n_windows) == max_samples // n_windows - 1:
-        prev_std_sum[(ith_iter % max_samples) // (max_samples // n_windows)] = 0
 
-    # indexing for avgs
-    for x in range(n_windows):
-        n[x] = (n[x] + 1) % max_samples
-
-    data.append(dct)
-
-df = pd.DataFrame(data)
-df[['est_std', 'true_std']].plot()
+if __name__ == '__main__':
+    df = main(400, 2)
+    df[['est_std', 'true_std']].plot()
+    df[['est_avg', 'true_avg']].plot()
