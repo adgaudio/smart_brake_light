@@ -73,6 +73,7 @@ def approx_rolling_avg(max_samples=40, n_windows=5):
             dct['est_rollavg'] = \
                 prev_mean[n_windows - 1 - (ith_iter % max_samples)
                           // (max_samples // n_windows)]
+            # above craziness gets index of window with most samples
 
         # all data points used to estimate the rolling avg
         for x in range(n_windows):
@@ -117,21 +118,23 @@ def verify_avg_method_is_working(df, max_samples, n_windows, plot=False):
     return sum_sq_err
 
 
-verify_avg_method_is_working(
-    approx_rolling_avg(200, 10),
-    200, 10, True)
+if __name__ == '__main__':
+    verify_avg_method_is_working(
+        approx_rolling_avg(200, 10),
+        200, 10, plot=True)
 
-# examine sum sq error across all possible windows
-max_samples = 200
-errs = {}
-dfs = []
-for n_windows in range(1, max_samples+1):
-    if max_samples // n_windows != max_samples / n_windows:
-        continue  # only factors of max_samples should be used
-    random.seed(4)
-    df = approx_rolling_avg(max_samples, n_windows)
-    dfs.append(df)
-    errs[n_windows] = verify_avg_method_is_working(df, max_samples, n_windows)
-errs = pd.Series(errs)
-# errs.cumsum().plot()
-print(errs)
+    # examine sum sq error across all possible windows
+    max_samples = 200
+    errs = {}
+    dfs = []
+    for n_windows in range(1, max_samples+1):
+        if max_samples // n_windows != max_samples / n_windows:
+            continue  # only factors of max_samples should be used
+        random.seed(4)
+        df = approx_rolling_avg(max_samples, n_windows)
+        dfs.append(df)
+        errs[n_windows] = verify_avg_method_is_working(
+            df, max_samples, n_windows)
+    errs = pd.Series(errs)
+    # errs.cumsum().plot()
+    print(errs)
