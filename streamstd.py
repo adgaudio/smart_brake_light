@@ -1,3 +1,7 @@
+"""
+Builds an online algorithm for Standard Deviation and Approximate Rolling
+Average.
+"""
 import math
 import random
 import numpy as np
@@ -22,8 +26,10 @@ def analogRead():
     return random.random() ** 10
 
 
-max_samples = 300
-n_windows = 150
+max_samples = 100
+n_windows = 10
+# n_windows = int(2*math.log(200))  # guess acceptable window size
+
 # validation
 if max_samples / n_windows != max_samples // n_windows:
     raise Exception("n_windows should be a factor of max_samples")
@@ -58,20 +64,18 @@ for ith_iter in range(1000):
     for i in range(n_windows):
         prev_std_sum[i] += (x - prev_avg) * (x - cur_avg)
 
-    xs.append(x)  # debug
-
     # estimate the var and std
-    if ith_iter < max_samples:
-        sum_sq_err = prev_std_sum[-1]
-    else:
-        sum_sq_err = prev_std_sum[
-            (ith_iter % max_samples) // (max_samples // n_windows)]
-
+    sum_sq_err = prev_std_sum[
+        (ith_iter % max_samples) // (max_samples // n_windows)]
+    if 1 < ith_iter < max_samples:
+        # extrapolate what the sum_sq_err should be if we haven't
+        # generated max_samples yet
+        sum_sq_err = sum_sq_err * max_samples / ith_iter
     var = sum_sq_err / (max_samples - 1)
-    # print(_tmp, n[_tmp])
     std = math.sqrt(var)
 
     # debug: true rolling std
+    xs.append(x)  # debug
     tavg = np.mean(xs[-max_samples:])
     tvar = np.var(xs[-max_samples:])
     tstd = np.std(xs[-max_samples:])
@@ -82,7 +86,7 @@ for ith_iter in range(1000):
     )
 
     # indexing for std
-    if ith_iter % (max_samples // n_windows) == 1:
+    if ith_iter % (max_samples // n_windows) == max_samples // n_windows - 1:
         prev_std_sum[(ith_iter % max_samples) // (max_samples // n_windows)] = 0
 
     # indexing for avgs
@@ -92,3 +96,4 @@ for ith_iter in range(1000):
     data.append(dct)
 
 df = pd.DataFrame(data)
+df[['est_std', 'true_std']].plot()
