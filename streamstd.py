@@ -2,6 +2,7 @@
 Builds an online algorithm for Standard Deviation and Approximate Rolling
 Average.
 """
+from __future__ import division
 import math
 import random
 import numpy as np
@@ -23,7 +24,8 @@ def update_means(x, ith_iter, ss):
     """
     # update windows
     for i in range(ss.n_windows):
-        ss.means[i] = (ss.n[i] * ss.means[i] + x) / (ss.n[i] + 1)
+        n = (ith_iter + i * ss.max_samples / ss.n_windows) % ss.max_samples
+        ss.means[i] = (n * ss.means[i] + x) / (n + 1)
 
     # get avg from best window
     ss.prev_avg = ss.cur_avg
@@ -35,11 +37,6 @@ def update_means(x, ith_iter, ss):
                 ss.n_windows - 1 - (ith_iter % ss.max_samples)
                 // (ss.max_samples // ss.n_windows)]
         # above craziness gets index of window with most samples
-
-    # update indexing
-    for x in range(ss.n_windows):
-        ss.n[x] = (ss.n[x] + 1) % ss.max_samples
-
     return ss.cur_avg
 
 
@@ -81,29 +78,34 @@ def analogRead():
 
 
 class StreamStats(object):
-    def __init__(self, max_samples, n_windows=None):
+    """Store data to calculate rolling average and standard deviation
+    using low memory
+    """
+    def __init__(self, max_samples, n_windows):
+        """
+        `max_samples` how many data points, or how much history, to consider
+        `n_windows` how accurate the estimates of the avg and stdev should be.
+            the tradeoff here is more windows == more ram
+        """
         # validation
         if max_samples / n_windows != max_samples // n_windows:
             raise Exception("n_windows should be a factor of max_samples")
 
         self.max_samples = max_samples
-        if n_windows is None:
-            # guess acceptable window size
-            self.n_windows = int(2*math.log(200))
-        else:
-            self.n_windows = n_windows
+        self.n_windows = n_windows
 
         # other variables
-        self.n = [x * max_samples / n_windows for x in range(n_windows)]
         self.means = [0] * n_windows
         self.std_sums = [0] * n_windows
 
-        self.sum_sq_err = 0
         self.cur_avg = 0
         self.prev_avg = 0
 
 
-def main(max_samples, n_windows):
+def main(max_samples, n_windows=None):
+    if n_windows is None:
+        # guess acceptable window size
+        n_windows = int(2*math.log(200))
     ss = StreamStats(max_samples, n_windows)
 
     xs = []  # debug
@@ -132,6 +134,6 @@ def main(max_samples, n_windows):
 
 
 if __name__ == '__main__':
-    df = main(400, 2)
+    df = main(400)
     df[['est_std', 'true_std']].plot()
     df[['est_avg', 'true_avg']].plot()
