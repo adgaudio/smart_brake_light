@@ -105,7 +105,7 @@ class StreamStats(object):
 def main(max_samples, n_windows=None):
     if n_windows is None:
         # guess acceptable window size
-        n_windows = int(2*math.log(200))
+        n_windows = int(2*math.log(max_samples))
     ss = StreamStats(max_samples, n_windows)
 
     xs = []  # debug
