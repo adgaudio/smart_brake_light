@@ -1,6 +1,6 @@
 import pandas as pd
 import random
-from bike_light_arduino import streamstd as stats
+from smart_bike_light import streamstd as stats
 import pylab
 pylab.ion()
 
