@@ -9,27 +9,37 @@ import scipy.stats as st
 pylab.ion()
 
 c = 0
-a = 0
+a = 400
 braking = False
 
 
 def analogRead():
     global c, braking, a
     c += 1
-    a += (random.random() * (int(random.random() >= .5) * 2 - 1))
+
+    if random.random() > .999:
+        # correct towards middle
+        a += (random.random() * (int(random.random() >= (a / 800)) * 2 - 1))
+    else:
+        a += (random.random() * (int(random.random() >= .5) * 2 - 1))
+    if a < 0:
+        a = 0
+    if a > 800:
+        a = 800
     if braking:
         braking = random.random() < .98
     else:
         braking = random.random() < .002
     if braking:
         #  return 30
-        return np.abs(a * (.41 + random.random()))
+        return a * (.41 + np.abs(random.random()))
     else:
         return a
 
 
 def main(max_samples, n_windows, lookback):
-    ss = stats.StreamStats(max_samples, n_windows)
+    ssmean = stats.StreamStats(max_samples, n_windows)
+    ssstd = stats.StreamStats(max_samples * 10, n_windows)
 
     data = []  # debug: testing
 
@@ -38,14 +48,14 @@ def main(max_samples, n_windows, lookback):
     for ith_iter in range(5000):
         x = analogRead()
 
-        cur_avg = stats.update_means(x, ith_iter, ss)
+        cur_avg = stats.update_means(x, ith_iter, ssmean)
         # TODO: std bug fix:  why does multiply by n>1 make more accurate?
-        std = stats.update_std_sums(x, ith_iter, ss)
+        std = stats.update_std(x, ith_iter, ssstd)
         # TEST  -- using true std
         #  std = np.std([_['x'] for _ in data])
         # TEST  -- using rolling std
-        std = np.std(
-            [_['x'] for _ in data[-max_samples*4:]] if data else [0])
+        #  std = np.std(
+            #  [_['x'] for _ in data[-max_samples*3:]] if data else [0])
         z = (x - cur_avg) / std if std != 0 else 0
         ratio = (z > 1) / (p_z_gt_1 * lookback)
 
@@ -64,20 +74,20 @@ def main(max_samples, n_windows, lookback):
             #  t_rolling_mean=np.mean(
             #      [_['x'] for _ in data[-max_samples:]] if data else [0]),
             t_rolling_std=np.std(
-                [_['x'] for _ in data[-max_samples:]] if data else [0]),
+                [_['x'] for _ in data[-max_samples*10:]] if data else [0]),
             #  tavg=np.mean([_['x'] for _ in data]),
             tstd=np.std([_['x'] for _ in data]),
         )
         data.append(dct)  # debug
-    return pd.DataFrame(data), ss
+    return pd.DataFrame(data), ssmean, ssstd
 
 
 if __name__ == '__main__':
-    MAX_SAMPLES = 400
+    MAX_SAMPLES = 100
     N_WINDOWS = 20
     LOOKBACK = MAX_SAMPLES / N_WINDOWS
 
-    df, ss = main(MAX_SAMPLES, N_WINDOWS, LOOKBACK)
+    df, ssmean, ssstd = main(MAX_SAMPLES, N_WINDOWS, LOOKBACK)
 
     df['z1'] = pd.rolling_sum(df['ratio'], LOOKBACK)
 

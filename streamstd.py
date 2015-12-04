@@ -21,6 +21,7 @@ def update_means(x, ith_iter, ss):
     x = current sample value to add to rolling avg
     ss = StreamStats instance
 
+    O(n_windows + c)
     """
     ith_iter = ith_iter % ss.max_samples  # hack fix
     _window_size = ss.max_samples / ss.n_windows
@@ -46,13 +47,10 @@ def update_means(x, ith_iter, ss):
         # sanity check
         assert n + _window_size * (ss.n_windows - 1) < ss.max_samples
 
-    # housekeeping for std calculation
-    ss.prev_avg = ss.cur_avg
-    ss.cur_avg = avg
     return avg
 
 
-def update_std_sums(x, ith_iter, ss):
+def update_std(x, ith_iter, ss):
     """
     Calculate an intermediary value for standard deviation for each window
     Return current standard deviation from window with most samples
@@ -62,38 +60,37 @@ def update_std_sums(x, ith_iter, ss):
     cur_avg = current best average across all windows
     ss = StreamStats instance
     """
+    ms = ss.max_samples  # max samples for std calculation
     # TODO: ensure works correctly, or make more accurate
-    # std is currently too small I think
 
-    # get index of window with least elements in it
-    _window_size = ss.max_samples / ss.n_windows
-    i = int(ith_iter // _window_size % ss.n_windows)
+    if ss.prev_avg is None:  # basecase
+        ss.prev_avg = x
+        return 1
+
     # get num elements that make up the sum (including value about to add)
-    n = (ith_iter % _window_size) + 1
+    delta = (x - ss.prev_avg)
+    cur_avg = ss.prev_avg + delta / ith_iter  # TODO cur_avg per std window?
 
-    ss.std_sums[i] += (x - ss.prev_avg) * (x - ss.cur_avg)
 
-    #  # update windows
-    #  for i in range(ss.n_windows):
-    #      ss.std_sums[i] += (x - ss.prev_avg) * (x - ss.cur_avg)
+    # update vars
+    ss.prev_avg = cur_avg
+    err = delta * (x - cur_avg)
+    # update hack: store multiple sum sq errs and reset them every so often
+    for i in range(len(ss.sum_sq_err)):
+        ss.sum_sq_err[i] += err
 
-    # get std from best window
-    sum_sq_err = ss.std_sums[
-        (ith_iter % ss.max_samples) // (ss.max_samples // ss.n_windows)]
-    if 1 < ith_iter < ss.max_samples:
-        # extrapolate what the sum_sq_err should be if we haven't
-        # generated max_samples yet
-        sum_sq_err = sum_sq_err * ss.max_samples / ith_iter
-    var = sum_sq_err / (ss.max_samples - 1)
-    std = math.sqrt(var)
+    # hack fix
+    ith_iter = ith_iter % ms  # TODO: fix
 
-    # update indexing
-    if ith_iter % (ss.max_samples // ss.n_windows) == \
-            ss.max_samples // ss.n_windows - 1:
-        ss.std_sums[
-            (ith_iter % ss.max_samples) // (ss.max_samples // ss.n_windows)] = 0
+    # get index of oldest sum_sq_err
+    _i = int(ith_iter / (ms / len(ss.sum_sq_err)))
+    # re-initialize youngest sum_sq_err to 0
+    if ith_iter % (ms / len(ss.sum_sq_err)) == 0:
+        ss.sum_sq_err[_i - 1] = 0
 
-    return std
+    return np.sqrt(ss.sum_sq_err[_i] / (ms - 1))
+    # w/o sqrt is variance...
+    # TODO: maybe don't actually need sqrt because of cancellation in ratio
 
 
 def analogRead():
@@ -121,8 +118,8 @@ class StreamStats(object):
         self.sums = [0] * n_windows
         self.std_sums = [0] * n_windows
 
-        self.cur_avg = 0
-        self.prev_avg = 0
+        self.prev_avg = None
+        self.sum_sq_err = [0] * n_windows  # TODO: make this configurable
 
 
 def main(max_samples, n_windows=None):
