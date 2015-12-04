@@ -62,11 +62,20 @@ def update_std_sums(x, ith_iter, ss):
     cur_avg = current best average across all windows
     ss = StreamStats instance
     """
-    # TOOD: ensure works correctly, or make more accurate
+    # TODO: ensure works correctly, or make more accurate
     # std is currently too small I think
-    # update windows
-    for i in range(ss.n_windows):
-        ss.std_sums[i] += (x - ss.prev_avg) * (x - ss.cur_avg)
+
+    # get index of window with least elements in it
+    _window_size = ss.max_samples / ss.n_windows
+    i = int(ith_iter // _window_size % ss.n_windows)
+    # get num elements that make up the sum (including value about to add)
+    n = (ith_iter % _window_size) + 1
+
+    ss.std_sums[i] += (x - ss.prev_avg) * (x - ss.cur_avg)
+
+    #  # update windows
+    #  for i in range(ss.n_windows):
+    #      ss.std_sums[i] += (x - ss.prev_avg) * (x - ss.cur_avg)
 
     # get std from best window
     sum_sq_err = ss.std_sums[

@@ -20,9 +20,10 @@ def analogRead():
     if braking:
         braking = random.random() < .98
     else:
-        braking = random.random() < .001
+        braking = random.random() < .002
     if braking:
-        return np.abs(a * (3 + random.random())+20)
+        #  return 30
+        return np.abs(a * (.41 + random.random()))
     else:
         return a
 
@@ -40,6 +41,11 @@ def main(max_samples, n_windows, lookback):
         cur_avg = stats.update_means(x, ith_iter, ss)
         # TODO: std bug fix:  why does multiply by n>1 make more accurate?
         std = stats.update_std_sums(x, ith_iter, ss)
+        # TEST  -- using true std
+        #  std = np.std([_['x'] for _ in data])
+        # TEST  -- using rolling std
+        std = np.std(
+            [_['x'] for _ in data[-max_samples*4:]] if data else [0])
         z = (x - cur_avg) / std if std != 0 else 0
         ratio = (z > 1) / (p_z_gt_1 * lookback)
 
@@ -52,22 +58,22 @@ def main(max_samples, n_windows, lookback):
 
             # DEBUG
             t_rolling_mean=1,
-            t_rolling_std=1,
+            #  t_rolling_std=1,
             tavg=1,
-            tstd=1,
+            #  tstd=1,
             #  t_rolling_mean=np.mean(
             #      [_['x'] for _ in data[-max_samples:]] if data else [0]),
-            #  t_rolling_std=np.std(
-            #      [_['x'] for _ in data[-max_samples:]] if data else [0]),
+            t_rolling_std=np.std(
+                [_['x'] for _ in data[-max_samples:]] if data else [0]),
             #  tavg=np.mean([_['x'] for _ in data]),
-            #  tstd=np.std([_['x'] for _ in data]),
+            tstd=np.std([_['x'] for _ in data]),
         )
         data.append(dct)  # debug
     return pd.DataFrame(data), ss
 
 
 if __name__ == '__main__':
-    MAX_SAMPLES = 200
+    MAX_SAMPLES = 400
     N_WINDOWS = 20
     LOOKBACK = MAX_SAMPLES / N_WINDOWS
 
@@ -97,8 +103,10 @@ if __name__ == '__main__':
     (df['u'] + df['o']).plot(style='b--')
     (df['u'] - df['o']).plot(style='b--')
 
-    df['z1'].plot(secondary_y=('z1', ), style='r.', alpha=.3, legend=True)
     (df['z1'] > 1).plot(secondary_y=('z1', ), color='red')
+    df['z1'].plot(secondary_y=('z1', ), style='r.', alpha=.3, legend=True)
+    #  df['ratio'].plot(secondary_y=('ratio', ), style='r^', legend=True)
+
 
 
     #  pylab.figure()
@@ -107,7 +115,7 @@ if __name__ == '__main__':
 
     # sanity checks
     #  df[['u', 't_rolling_mean', 'tavg']].plot()
-    #  df[['o', 't_rolling_std', 'tstd']].plot()
+    df[['o', 't_rolling_std', 'tstd']].plot()
 
     #  df[['x', 'u', 'o', 'z']].plot(subplots=True, gid=3, sharey=True)
 
