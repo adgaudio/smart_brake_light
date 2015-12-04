@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pylab
 pylab.ion()
-random.seed(0)
 
 
 def update_means(x, ith_iter, ss):
@@ -21,23 +20,36 @@ def update_means(x, ith_iter, ss):
 
     x = current sample value to add to rolling avg
     ss = StreamStats instance
-    """
-    # update windows
-    for i in range(ss.n_windows):
-        n = (ith_iter + i * ss.max_samples / ss.n_windows) % ss.max_samples
-        ss.means[i] = (n * ss.means[i] + x) / (n + 1)
 
-    # get avg from best window
-    ss.prev_avg = ss.cur_avg
-    if ith_iter < ss.max_samples:
-        ss.cur_avg = ss.means[0]
+    """
+    ith_iter = ith_iter % ss.max_samples  # hack fix
+    _window_size = ss.max_samples / ss.n_windows
+
+    # get index of window with least elements in it
+    i = int(ith_iter // _window_size % ss.n_windows)
+    # get num elements that make up the sum (including value about to add)
+    n = (ith_iter % _window_size) + 1
+
+    # update sum for window with least elements in it
+    if n == 1:
+        ss.sums[i] = x
     else:
-        ss.cur_avg = \
-            ss.means[
-                ss.n_windows - 1 - (ith_iter % ss.max_samples)
-                // (ss.max_samples // ss.n_windows)]
-        # above craziness gets index of window with most samples
-    return ss.cur_avg
+        ss.sums[i] += x
+
+    # calculate estimated rolling average from windows
+    if n == _window_size:  # basecase, all sums are full
+        avg = sum(ss.sums[x] / ss.max_samples for x in range(ss.n_windows))
+    else:
+        # rather than take a strict rolling avg, benefit from any extra data
+        avg = sum(ss.sums[x] / (n + _window_size * (ss.n_windows - 1))
+                  for x in range(ss.n_windows))
+        # sanity check
+        assert n + _window_size * (ss.n_windows - 1) < ss.max_samples
+
+    # housekeeping for std calculation
+    ss.prev_avg = ss.cur_avg
+    ss.cur_avg = avg
+    return avg
 
 
 def update_std_sums(x, ith_iter, ss):
@@ -50,6 +62,8 @@ def update_std_sums(x, ith_iter, ss):
     cur_avg = current best average across all windows
     ss = StreamStats instance
     """
+    # TOOD: ensure works correctly, or make more accurate
+    # std is currently too small I think
     # update windows
     for i in range(ss.n_windows):
         ss.std_sums[i] += (x - ss.prev_avg) * (x - ss.cur_avg)
@@ -95,7 +109,7 @@ class StreamStats(object):
         self.n_windows = n_windows
 
         # other variables
-        self.means = [0] * n_windows
+        self.sums = [0] * n_windows
         self.std_sums = [0] * n_windows
 
         self.cur_avg = 0
@@ -134,6 +148,8 @@ def main(max_samples, n_windows=None):
 
 
 if __name__ == '__main__':
-    df = main(400)
-    df[['est_std', 'true_std']].plot()
-    df[['est_avg', 'true_avg']].plot()
+    pass
+    #  random.seed(0)
+    #  df = main(400)
+    #  df[['est_std', 'true_std']].plot()
+    #  df[['est_avg', 'true_avg']].plot()
