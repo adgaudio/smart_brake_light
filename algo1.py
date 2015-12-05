@@ -11,10 +11,11 @@ pylab.ion()
 c = 0
 a = 400
 braking = False
+accelerating = False
 
 
 def analogRead():
-    global c, braking, a
+    global c, braking, accelerating, a
     c += 1
 
     if random.random() > .999:
@@ -28,18 +29,32 @@ def analogRead():
         a = 800
     if braking:
         braking = random.random() < .98
+        accelerating = False
     else:
         braking = random.random() < .002
+        if accelerating:
+            braking = False
+            accelerating = random.random() < .99
+        else:
+            accelerating = random.random() < .002
+
     if braking:
         #  return 30
-        return a * (.41 + np.abs(random.random()))
+        return a + 20* (np.abs(random.random()))
+    elif accelerating:
+        return a - .04 * np.abs(a) * (np.abs(random.random()))
     else:
         return a
 
 
 def main(max_samples, n_windows, lookback):
     ssmean = stats.StreamStats(max_samples, n_windows)
-    ssstd = stats.StreamStats(max_samples * 10, n_windows)
+    ssstd = stats.StreamStats(max_samples * 3, int(n_windows/2))
+    # basically, max_samples and n_windows is a balance.
+    # - the avg needs to track pretty closely the changes, but no so much that a
+    # break even throws it way off.  adjust max_samples to get the right balance
+    # - the std needs to be as long as possible to be accurate.  Do this by
+    # either decreasing its n_windows or increasing max_samples
 
     data = []  # debug: testing
 
@@ -49,13 +64,12 @@ def main(max_samples, n_windows, lookback):
         x = analogRead()
 
         cur_avg = stats.update_means(x, ith_iter, ssmean)
-        # TODO: std bug fix:  why does multiply by n>1 make more accurate?
         std = stats.update_std(x, ith_iter, ssstd)
         # TEST  -- using true std
         #  std = np.std([_['x'] for _ in data])
         # TEST  -- using rolling std
         #  std = np.std(
-            #  [_['x'] for _ in data[-max_samples*3:]] if data else [0])
+        #      [_['x'] for _ in data[-max_samples*3:]] if data else [0])
         z = (x - cur_avg) / std if std != 0 else 0
         ratio = (z > 1) / (p_z_gt_1 * lookback)
 
@@ -83,7 +97,7 @@ def main(max_samples, n_windows, lookback):
 
 
 if __name__ == '__main__':
-    MAX_SAMPLES = 100
+    MAX_SAMPLES = 300
     N_WINDOWS = 20
     LOOKBACK = MAX_SAMPLES / N_WINDOWS
 

@@ -52,16 +52,14 @@ def update_means(x, ith_iter, ss):
 
 def update_std(x, ith_iter, ss):
     """
-    Calculate an intermediary value for standard deviation for each window
-    Return current standard deviation from window with most samples
+    Online Standard Deviation algorithm
 
     x = current sample value to add to rolling avg
-    prev_avg = previous best average across all windows
-    cur_avg = current best average across all windows
     ss = StreamStats instance
     """
     ms = ss.max_samples  # max samples for std calculation
-    # TODO: ensure works correctly, or make more accurate
+
+    ith_iter = ith_iter % ms  # hack fix
 
     if ss.prev_avg is None:  # basecase
         ss.prev_avg = x
@@ -69,8 +67,8 @@ def update_std(x, ith_iter, ss):
 
     # get num elements that make up the sum (including value about to add)
     delta = (x - ss.prev_avg)
-    cur_avg = ss.prev_avg + delta / ith_iter  # TODO cur_avg per std window?
-
+    cur_avg = ss.prev_avg + delta / ms
+    # --> TODO first time around, denominator is ith_iter.  maybe leave as is
 
     # update vars
     ss.prev_avg = cur_avg
@@ -79,9 +77,6 @@ def update_std(x, ith_iter, ss):
     for i in range(len(ss.sum_sq_err)):
         ss.sum_sq_err[i] += err
 
-    # hack fix
-    ith_iter = ith_iter % ms  # TODO: fix
-
     # get index of oldest sum_sq_err
     _i = int(ith_iter / (ms / len(ss.sum_sq_err)))
     # re-initialize youngest sum_sq_err to 0
@@ -89,8 +84,7 @@ def update_std(x, ith_iter, ss):
         ss.sum_sq_err[_i - 1] = 0
 
     return np.sqrt(ss.sum_sq_err[_i] / (ms - 1))
-    # w/o sqrt is variance...
-    # TODO: maybe don't actually need sqrt because of cancellation in ratio
+    # TODO: estimage sqrt?
 
 
 def analogRead():
